@@ -47,154 +47,87 @@ class _MyHomePageState extends State<MyHomePage> {
 
     try {
       // 1. Load image
-      final data = await rootBundle.load('assets/LOGO.png');
+      final data = await rootBundle.load('assets/LOGOq.png');
       final originalImage = img.decodeImage(data.buffer.asUint8List());
       if (originalImage == null) throw Exception('Failed to decode image');
 
-      setState(() => _status = 'Enhancing image quality...');
+      setState(() => _status = 'Resizing image...');
 
-      // 2. Convert to grayscale and apply contrast enhancement
-      final grayscaleImage = img.grayscale(originalImage);
-      final contrastImage = img.adjustColor(grayscaleImage, contrast: 1.3);
-
-      // 3. Resize to optimal width (384 pixels for 48mm printer)
+      // 2. Resize image to 400px width
+      int adjustedHeight(int originalHeight) => (originalHeight / 8).ceil();
       final resizedImage = img.copyResize(
-        contrastImage,
-        width: 384,
-        height: (contrastImage.height * 384 / contrastImage.width).round(),
-        interpolation: img.Interpolation.cubic,
+        originalImage,
+        width: 400,
+        height: adjustedHeight(originalImage.height),
       );
 
-      setState(() => _status = 'Converting to printer format...');
-
-      // 4. Apply dithering for better quality
-      final ditheredImage = _applyFloydSteinbergDithering(resizedImage);
-      final height = ditheredImage.height;
+      final height = resizedImage.height;
 
       setState(() => _status = 'Printing image...');
 
-      // 5. Initialize printer
-      List<int> initCommands = [];
-      initCommands.addAll(ESC_INIT);
-      initCommands.addAll(ESC_ALIGN_CENTER);
-      initCommands.addAll([0x1B, 0x33, 24]); // Set line spacing to 24/180 inch
+      // 3. Print image 8 vertical dots at a time (back to row by row)
+      for (int y = 0; y < height; y += 8) {
+        List<int> bytes = [];
 
-      await _channel.invokeMethod('printBytes', {
-        'portPath': '/dev/ttyS3',
-        'data': Uint8List.fromList(initCommands),
-      });
+        // Set line spacing
+        bytes.addAll([0x1B, 0x33, 8]);
 
-      // 6. Print image using bit image mode
-      for (int y = 0; y < height; y += 24) {
-        // 24-pin mode for better quality
-        List<int> rowBytes = [];
+        // Left half (0-199)
+        bytes.addAll([0x1B, 0x24, 0x00, 0x00]); // Position 0
+        bytes.addAll([0x1B, 0x2A, 0x01, 200, 0]); // ESC * 1 200 0
 
-        // ESC * mode for 24-pin graphics
-        rowBytes.addAll([0x1B, 0x2A, 33]); // ESC * ! (24-pin double-density)
-
-        int actualWidth = 384;
-        rowBytes.add(actualWidth & 0xFF);
-        rowBytes.add((actualWidth >> 8) & 0xFF);
-
-        // Generate 24-pin data
-        for (int x = 0; x < actualWidth; x++) {
-          // Each column needs 3 bytes for 24 pins
-          int byte1 = 0, byte2 = 0, byte3 = 0;
-
-          for (int pin = 0; pin < 8; pin++) {
-            if (y + pin < height && _isBlackPixel(ditheredImage, x, y + pin)) {
-              byte1 |= (1 << (7 - pin));
-            }
+        for (int x = 0; x < 200; x++) {
+          int byte = 0;
+          for (int bit = 0; bit < 8; bit++) {
+            int pxY = y + bit;
+            if (pxY >= height) continue;
+            final pixel = resizedImage.getPixel(x, pxY);
+            final isBlack = img.getLuminance(pixel) < 128;
+            byte |= (isBlack ? 1 : 0) << (7 - bit);
           }
-
-          for (int pin = 0; pin < 8; pin++) {
-            if (y + pin + 8 < height &&
-                _isBlackPixel(ditheredImage, x, y + pin + 8)) {
-              byte2 |= (1 << (7 - pin));
-            }
-          }
-
-          for (int pin = 0; pin < 8; pin++) {
-            if (y + pin + 16 < height &&
-                _isBlackPixel(ditheredImage, x, y + pin + 16)) {
-              byte3 |= (1 << (7 - pin));
-            }
-          }
-
-          rowBytes.addAll([byte1, byte2, byte3]);
+          bytes.add(byte);
         }
 
-        rowBytes.add(0x0A); // Line feed
+        // Right half (200-399)
+        bytes.addAll([0x1B, 0x24, 200, 0x00]); // Position 200
+        bytes.addAll([0x1B, 0x2A, 0x01, 200, 0]);
 
-        // Send row to printer
+        for (int x = 200; x < 400; x++) {
+          int byte = 0;
+          for (int bit = 0; bit < 8; bit++) {
+            int pxY = y + bit;
+            if (pxY >= height) continue;
+            final pixel = resizedImage.getPixel(x, pxY);
+            final isBlack = img.getLuminance(pixel) < 128;
+            byte |= (isBlack ? 1 : 0) << (7 - bit);
+          }
+          bytes.add(byte);
+        }
+
+        // Line feed
+        bytes.add(0x0A);
+
+        // Send each row to printer
         await _channel.invokeMethod('printBytes', {
           'portPath': '/dev/ttyS3',
-          'data': Uint8List.fromList(rowBytes),
+          'data': Uint8List.fromList(bytes),
         });
 
         // Update progress
-        setState(
-            () => _status = 'Printing... ${((y / height) * 100).round()}%');
+        if (y % 40 == 0) {
+          // Update every 5 rows
+          setState(
+              () => _status = 'Printing... ${((y / height) * 100).round()}%');
+        }
       }
 
-      // Final spacing
-      await _channel.invokeMethod('printBytes', {
-        'portPath': '/dev/ttyS3',
-        'data': Uint8List.fromList([0x1B, 0x64, 0x03]), // Feed 3 lines
-      });
-
-      setState(() => _status = 'High-quality image printed!');
+      setState(() => _status = 'Image printed successfully!');
     } catch (e) {
       setState(() => _status = 'Print error: $e');
       print('Print error: $e');
     } finally {
       setState(() => _isPrinting = false);
     }
-  }
-
-  // Floyd-Steinberg dithering for better image quality
-  img.Image _applyFloydSteinbergDithering(img.Image image) {
-    final width = image.width;
-    final height = image.height;
-    final result = img.Image(width: width, height: height);
-
-    // Create error diffusion matrix
-    List<List<double>> errors =
-        List.generate(height, (i) => List.filled(width, 0.0));
-
-    for (int y = 0; y < height; y++) {
-      for (int x = 0; x < width; x++) {
-        final pixel = image.getPixel(x, y);
-        final gray = img.getLuminance(pixel) + errors[y][x];
-
-        final newGray = gray < 128 ? 0 : 255;
-        final error = gray - newGray;
-
-        result.setPixel(x, y, img.ColorRgb8(newGray, newGray, newGray));
-
-        // Distribute error to neighboring pixels
-        if (x + 1 < width) {
-          errors[y][x + 1] += error * 7 / 16;
-        }
-        if (y + 1 < height) {
-          if (x - 1 >= 0) {
-            errors[y + 1][x - 1] += error * 3 / 16;
-          }
-          errors[y + 1][x] += error * 5 / 16;
-          if (x + 1 < width) {
-            errors[y + 1][x + 1] += error * 1 / 16;
-          }
-        }
-      }
-    }
-
-    return result;
-  }
-
-  bool _isBlackPixel(img.Image image, int x, int y) {
-    if (x >= image.width || y >= image.height) return false;
-    final pixel = image.getPixel(x, y);
-    return img.getLuminance(pixel) < 128;
   }
 
   Future<void> _printTestPattern() async {
