@@ -84,7 +84,7 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - assets/LOGO.png
+    - assets/
     - assets/font/Sarabun-Thin.ttf
     - assets/font/Sarabun-ExtraBoldItalic.ttf
     - assets/font/Kannaka.ttf
