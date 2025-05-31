@@ -7,7 +7,7 @@ import java.io.IOException;
 
 public class PrinterNative {
     private static final String TAG = "PrinterNative";
-    private static final int CHUNK_SIZE = 2000; // Small chunks for buffer safety
+    private static final int CHUNK_SIZE = 512; // Smaller chunks for better image quality
     
     public PrinterNative() {
         // Simple constructor
@@ -43,7 +43,7 @@ public class PrinterNative {
             // Open port
             output = new FileOutputStream(device);
             
-            // Send data in chunks
+            // Send data in smaller chunks with delays for image data
             int offset = 0;
             while (offset < data.length) {
                 int length = Math.min(CHUNK_SIZE, data.length - offset);
@@ -51,9 +51,9 @@ public class PrinterNative {
                 output.flush();
                 offset += length;
                 
-                // Small delay between chunks
+                // Add delay between chunks for image data
                 if (offset < data.length) {
-                   
+                    Thread.sleep(10); // Small delay for better image quality
                 }
             }
             

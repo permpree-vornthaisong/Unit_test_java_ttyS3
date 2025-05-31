@@ -40,11 +40,18 @@ class _MyHomePageState extends State<MyHomePage> {
   static const List<int> ESC_FEED_3 = [0x1B, 0x64, 0x03];
 
   Future<void> _printImage() async {
+    setState(() {
+      _isPrinting = true;
+      _status = 'Processing image...';
+    });
+
     try {
       // 1. Load image
       final data = await rootBundle.load('assets/LOGO.png');
       final originalImage = img.decodeImage(data.buffer.asUint8List());
       if (originalImage == null) throw Exception('Failed to decode image');
+
+      setState(() => _status = 'Resizing image...');
 
       // 2. Resize image to 400px width
       int adjustedHeight(int originalHeight) => (originalHeight / 8).ceil();
@@ -56,7 +63,9 @@ class _MyHomePageState extends State<MyHomePage> {
 
       final height = resizedImage.height;
 
-      // 3. Print image 8 vertical dots at a time
+      setState(() => _status = 'Printing image...');
+
+      // 3. Print image 8 vertical dots at a time (back to row by row)
       for (int y = 0; y < height; y += 8) {
         List<int> bytes = [];
 
@@ -98,19 +107,26 @@ class _MyHomePageState extends State<MyHomePage> {
         // Line feed
         bytes.add(0x0A);
 
-        // Send to printer
+        // Send each row to printer
         await _channel.invokeMethod('printBytes', {
           'portPath': '/dev/ttyS3',
           'data': Uint8List.fromList(bytes),
         });
 
-        // Delay every 5 rows
-        // if ((y ~/ 8) % 5 == 0) {
-        //   await Future.delayed(const Duration(milliseconds: 500));
-        // }
+        // Update progress
+        if (y % 40 == 0) {
+          // Update every 5 rows
+          setState(
+              () => _status = 'Printing... ${((y / height) * 100).round()}%');
+        }
       }
+
+      setState(() => _status = 'Image printed successfully!');
     } catch (e) {
+      setState(() => _status = 'Print error: $e');
       print('Print error: $e');
+    } finally {
+      setState(() => _isPrinting = false);
     }
   }
 
@@ -174,6 +190,22 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  Future<void> _sendStartIgnoreProtocol() async {
+    setState(() {
+      _isPrinting = true;
+      _status = 'Sending START_ignore_protocol...';
+    });
+
+    try {
+      final result = await _channel.invokeMethod('sendStartIgnoreProtocol');
+      setState(() => _status = result);
+    } catch (e) {
+      setState(() => _status = 'Protocol Error: $e');
+    } finally {
+      setState(() => _isPrinting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -212,6 +244,22 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
 
             const SizedBox(height: 40),
+
+            // START_ignore_protocol button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isPrinting ? null : _sendStartIgnoreProtocol,
+                icon: const Icon(Icons.send),
+                label: const Text('Send START_ignore_protocol'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.all(16),
+                  backgroundColor: Colors.orange,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
 
             // Buttons
             SizedBox(
@@ -267,7 +315,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
-                'Port: /dev/ttyS3 | Width: 500 dots | Direct byte sending',
+                'Port: /dev/ttyS3 | Width: 500 dots | Auto START_ignore_protocol on startup',
                 style: TextStyle(fontSize: 12),
                 textAlign: TextAlign.center,
               ),
