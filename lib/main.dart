@@ -38,7 +38,7 @@ class _MyHomePageState extends State<MyHomePage> {
   static const List<int> ESC_BIT_IMAGE = [0x1B, 0x2A, 33];
   static const List<int> LF = [0x0A];
   static const List<int> ESC_FEED_3 = [0x1B, 0x64, 0x03];
-
+  static const List<int> SWAP_INT_COLOR = [1, 0];
   Future<void> _printImage() async {
     setState(() {
       _isPrinting = true;
@@ -83,7 +83,7 @@ class _MyHomePageState extends State<MyHomePage> {
             if (pxY >= height) continue;
             final pixel = resizedImage.getPixel(x, pxY);
             final isBlack = img.getLuminance(pixel) < 128;
-            byte |= (isBlack ? 1 : 0) << (7 - bit);
+            byte |= SWAP_INT_COLOR[isBlack ? 1 : 0] << (7 - bit);
           }
           bytes.add(byte);
         }
@@ -99,7 +99,7 @@ class _MyHomePageState extends State<MyHomePage> {
             if (pxY >= height) continue;
             final pixel = resizedImage.getPixel(x, pxY);
             final isBlack = img.getLuminance(pixel) < 128;
-            byte |= (isBlack ? 1 : 0) << (7 - bit);
+            byte |= SWAP_INT_COLOR[isBlack ? 1 : 0] << (7 - bit);
           }
           bytes.add(byte);
         }
