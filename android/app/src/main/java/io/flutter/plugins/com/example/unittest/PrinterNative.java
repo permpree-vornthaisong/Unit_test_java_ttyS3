@@ -33,12 +33,12 @@ public class PrinterNative {
             }
             
             // Set permissions
-            try {
-                Runtime.getRuntime().exec("chmod 666 " + portPath);
-                Thread.sleep(50);
-            } catch (Exception e) {
-                Log.w(TAG, "Could not set permissions: " + e.getMessage());
-            }
+            // try {
+            //     Runtime.getRuntime().exec("chmod 666 " + portPath);
+            //     // Thread.sleep(50);
+            // } catch (Exception e) {
+            //     Log.w(TAG, "Could not set permissions: " + e.getMessage());
+            // }
             
             // Open port
             output = new FileOutputStream(device);
